@@ -1,0 +1,62 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+    branches: [main]
+
+jobs:
+  test:
+    name: Lint & Test
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Generate training data
+        run: python scripts/generate_data.py
+
+      - name: Train model (local run, no MLflow server)
+        env:
+          MLFLOW_TRACKING_URI: ""   # uses local ./mlruns folder
+          DATA_PATH: data/churn.csv
+          MODEL_OUTPUT_PATH: app/model/model.pkl
+        run: python scripts/train.py
+
+      - name: Run API tests
+        run: pytest tests/ -v
+
+  docker:
+    name: Build Docker Image
+    runs-on: ubuntu-latest
+    needs: test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Generate data & train model for image layer
+        run: |
+          pip install -r requirements.txt
+          python scripts/generate_data.py
+          MLFLOW_TRACKING_URI="" DATA_PATH=data/churn.csv \
+            MODEL_OUTPUT_PATH=app/model/model.pkl python scripts/train.py
+
+      - name: Build Docker image
+        run: docker build -t churn-api:ci .
+
+      - name: Smoke-test container
+        run: |
+          docker run -d --name churn-api -p 8000:8000 churn-api:ci
+          sleep 5
+          curl --fail http://localhost:8000/health
+          docker stop churn-api
