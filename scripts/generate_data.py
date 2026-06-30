@@ -4,6 +4,7 @@ Run once before training: python scripts/generate_data.py
 """
 import numpy as np
 import pandas as pd
+import os
 
 RNG = np.random.default_rng(42)
 N = 2000
@@ -37,6 +38,7 @@ def main():
             "churned": churned,
         }
     )
+    os.makedirs("data", exist_ok=True)
     df.to_csv("data/churn.csv", index=False)
     print(f"Saved {N} rows → data/churn.csv  (churn rate: {churned.mean():.1%})")
 
